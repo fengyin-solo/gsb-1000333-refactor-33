@@ -31,6 +31,11 @@ class Store:
         modules: list[dict[str, object]] = []
         for name in self.module_names():
             rows = self.rows(name)
+            if name == "trench":
+                # 管沟的待处理/异常口径以统一风险判定为准，避免看板与列表各算一遍。
+                from app.services.trench_risk import attach_risk
+
+                rows = [attach_risk(row) for row in rows]
             modules.append({
                 "name": name,
                 "created": len(rows),
