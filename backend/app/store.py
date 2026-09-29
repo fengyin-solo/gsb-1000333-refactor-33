@@ -28,9 +28,13 @@ class Store:
         return None
 
     def overview(self) -> dict[str, object]:
+        from app.services.trench_risk import apply_trench_risk
+
         modules: list[dict[str, object]] = []
         for name in self.module_names():
             rows = self.rows(name)
+            if name == "trench":
+                rows = [apply_trench_risk(row) for row in rows]
             modules.append({
                 "name": name,
                 "created": len(rows),

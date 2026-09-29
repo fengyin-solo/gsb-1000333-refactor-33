@@ -23,6 +23,13 @@
         <span>{{ field }}</span>
         <input v-model="filters[field]" :placeholder="`按${field}检索`" />
       </label>
+      <label class="filter-item">
+        <span>风险等级</span>
+        <select v-model="riskStatus">
+          <option value="">全部等级</option>
+          <option v-for="level in riskLevels" :key="level" :value="level">{{ level }}</option>
+        </select>
+      </label>
       <button class="btn" type="submit">查询</button>
       <button class="btn ghost" type="button" @click="resetFilters">重置条件</button>
     </form>
@@ -36,7 +43,9 @@
       </thead>
       <tbody>
         <tr v-for="row in rows" :key="String(row.id)">
-          <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
+          <td v-for="column in columns" :key="column" :title="column === '风险等级' ? riskTitle(row) : undefined">
+            {{ row[column] ?? '—' }}
+          </td>
           <td class="row-actions">
             <button
               v-for="action in actions"
@@ -63,26 +72,37 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import { request } from '@/api/client'
 
-type Row = Record<string, string | number | null>
+type Row = Record<string, string | number | boolean | string[] | null>
 
 const ENDPOINT = '/api/trench'
-const columns = ["管沟编号", "管沟位置", "沟内管线", "积水情况", "盖板完好", "气体浓度", "巡检日期", "管沟状态"]
+const columns = ["管沟编号", "管沟位置", "沟内管线", "积水情况", "盖板完好", "气体浓度", "巡检日期", "风险等级", "风险分值", "风险说明"]
 const actions = ["疏排积水", "更换盖板", "强制通风"]
-const statuses = ["正常", "积水", "盖板破损", "气体积聚"]
-const stats = [{"label": "正常管沟", "value": 0}, {"label": "问题管沟", "value": 0}, {"label": "待处理管沟", "value": 0}]
+const riskLevels = ["数据缺失", "低风险", "中风险", "高风险"]
 
 const rows = ref<Row[]>([])
 const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
-const filterFields = columns.slice(0, 3)
+const riskStatus = ref('')
+const filterFields = ["管沟编号"]
+
+const stats = computed(() => riskLevels.map((level) => ({
+  label: level,
+  value: rows.value.filter((row) => String(row['风险等级'] ?? '') === level).length,
+})))
+
+function riskTitle(row: Row): string {
+  const reason = row['风险说明']
+  return typeof reason === 'string' ? reason : ''
+}
 
 function resetFilters() {
   filters.value = {}
+  riskStatus.value = ''
   void reload()
 }
 
@@ -112,9 +132,18 @@ async function runAction(action: string, row: Row) {
 
 async function reload() {
   errorMessage.value = ''
-  const query = new URLSearchParams(filters.value as Record<string, string>).toString()
+  const params = new URLSearchParams()
+  Object.entries(filters.value).forEach(([field, value]) => {
+    if (value) params.set(field === '管沟编号' ? 'keyword' : field, value)
+  })
+  if (riskStatus.value) {
+    params.set('status', riskStatus.value)
+  }
+  params.set('size', '200')
+  const query = params.toString()
+
   try {
-    const response = await request(`${ENDPOINT}?${query}`)
+    const response = await request(query ? `${ENDPOINT}?${query}` : ENDPOINT)
     if (!response.ok) {
       throw new Error('管沟段列表读取失败')
     }
